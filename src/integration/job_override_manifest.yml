@@ -24,7 +24,7 @@ jobs:
         etcd:
           machines:
             - etcd1.foo.bar
-      metron_endpoint:
+      loggregator_endpoint:
         shared_secret: secret123
       syslog_daemon_config:
         address: logs2.test.com

@@ -61,7 +61,7 @@ type LoggregatorProperties struct {
 	} `yaml:"etcd"`
 }
 
-type MetronEndpoint struct {
+type LoggregatorEndpoint struct {
 	SharedSecret string `yaml:"shared_secret"`
 }
 
@@ -71,11 +71,11 @@ type SyslogProperties struct {
 }
 
 type Properties struct {
-	Consul         *ConsulProperties      `yaml:"consul"`
-	Diego          *DiegoProperties       `yaml:"diego"`
-	Loggregator    *LoggregatorProperties `yaml:"loggregator"`
-	MetronEndpoint *MetronEndpoint        `yaml:"metron_endpoint"`
-	Syslog         *SyslogProperties      `yaml:"syslog_daemon_config"`
+	Consul              *ConsulProperties      `yaml:"consul"`
+	Diego               *DiegoProperties       `yaml:"diego"`
+	Loggregator         *LoggregatorProperties `yaml:"loggregator"`
+	LoggregatorEndpoint *LoggregatorEndpoint   `yaml:"loggregator_endpoint"`
+	Syslog              *SyslogProperties      `yaml:"syslog_daemon_config"`
 }
 
 type Job struct {
