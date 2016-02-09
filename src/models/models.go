@@ -26,7 +26,6 @@ type InstallerArguments struct {
 	SyslogPort       string
 	BbsRequireSsl    bool
 	MachineIp        string
-	MetronPreferTLS  bool
 }
 
 type ConsulProperties struct {
@@ -60,21 +59,10 @@ type LoggregatorProperties struct {
 	Etcd struct {
 		Machines []string `yaml:"machines"`
 	} `yaml:"etcd"`
-	Tls struct {
-		CA string `yaml:"ca"`
-	} `yaml:"tls"`
 }
 
 type MetronEndpoint struct {
 	SharedSecret string `yaml:"shared_secret"`
-}
-
-type MetronAgent struct {
-	PreferredProtocol *string `yaml:"preferred_protocol"`
-	TlsClient         struct {
-		Cert string `yaml:"cert"`
-		Key  string `yaml:"key"`
-	} `yaml:"tls_client"`
 }
 
 type SyslogProperties struct {
@@ -87,7 +75,6 @@ type Properties struct {
 	Diego          *DiegoProperties       `yaml:"diego"`
 	Loggregator    *LoggregatorProperties `yaml:"loggregator"`
 	MetronEndpoint *MetronEndpoint        `yaml:"metron_endpoint"`
-	MetronAgent    *MetronAgent           `yaml:"metron_agent"`
 	Syslog         *SyslogProperties      `yaml:"syslog_daemon_config"`
 }
 

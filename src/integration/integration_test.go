@@ -438,49 +438,6 @@ var _ = Describe("Generate", func() {
 					Expect(script).To(Equal(expectedContent))
 				})
 			})
-
-			Context("when the deployment does not has metron tls enabled", func() {
-				BeforeEach(func() {
-					manifestYaml = "one_zone_manifest.yml"
-				})
-
-				It("does not generate the certificate authority cert", func() {
-					_, err := ioutil.ReadFile(path.Join(outputDir, "metron_ca.crt"))
-					Expect(err).To(HaveOccurred())
-				})
-				It("does not generate the metron agent cert", func() {
-					_, err := ioutil.ReadFile(path.Join(outputDir, "metron_agent.crt"))
-					Expect(err).To(HaveOccurred())
-				})
-				It("does not generate the metron agent key", func() {
-					_, err := ioutil.ReadFile(path.Join(outputDir, "metron_agent.key"))
-					Expect(err).To(HaveOccurred())
-				})
-			})
-
-			Context("when the deployment has metron tls enabled", func() {
-				BeforeEach(func() {
-					manifestYaml = "metron_tls_manifest.yml"
-				})
-
-				It("generates the certificate authority cert", func() {
-					cert, err := ioutil.ReadFile(path.Join(outputDir, "metron_ca.crt"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(cert).To(BeEquivalentTo("METRON_CA_CERT"))
-				})
-
-				It("generates the metron agent cert", func() {
-					cert, err := ioutil.ReadFile(path.Join(outputDir, "metron_agent.crt"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(cert).To(BeEquivalentTo("METRON_AGENT_CERT"))
-				})
-
-				It("generates the metron agent key", func() {
-					cert, err := ioutil.ReadFile(path.Join(outputDir, "metron_agent.key"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(cert).To(BeEquivalentTo("METRON_AGENT_KEY"))
-				})
-			})
 		})
 
 		Context("with an optional machine IP", func() {

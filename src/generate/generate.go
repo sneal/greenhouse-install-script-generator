@@ -44,10 +44,7 @@ const (
   CONSUL_ENCRYPT_FILE=%~dp0\consul_encrypt.key ^
   CONSUL_CA_FILE=%~dp0\consul_ca.crt ^
   CONSUL_AGENT_CERT_FILE=%~dp0\consul_agent.crt ^
-  CONSUL_AGENT_KEY_FILE=%~dp0\consul_agent.key{{end}}{{if .MetronPreferTLS }} ^
-  METRON_CA_FILE=%~dp0\metron_ca.crt ^
-  METRON_AGENT_CERT_FILE=%~dp0\metron_agent.crt ^
-  METRON_AGENT_KEY_FILE=%~dp0\metron_agent.key{{end}}
+  CONSUL_AGENT_KEY_FILE=%~dp0\consul_agent.key{{end}}
 
 msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
   ADMIN_USERNAME={{.Username}} ^
@@ -125,7 +122,6 @@ func main() {
 
 	fillEtcdCluster(&args, manifest)
 	fillSharedSecret(&args, manifest)
-	fillMetronAgent(&args, manifest, *outputDir)
 	fillSyslog(&args, manifest)
 	fillConsul(&args, manifest, *outputDir)
 
@@ -152,22 +148,6 @@ func fillSharedSecret(args *models.InstallerArguments, manifest models.Manifest)
 		properties = manifest.Properties
 	}
 	args.SharedSecret = properties.MetronEndpoint.SharedSecret
-}
-
-func fillMetronAgent(args *models.InstallerArguments, manifest models.Manifest, outputDir string) {
-	repJob := firstRepJob(manifest)
-	properties := repJob.Properties
-
-	if properties.MetronAgent == nil || properties.MetronAgent.PreferredProtocol == nil {
-		properties = manifest.Properties
-	}
-
-	if properties != nil && properties.MetronAgent != nil && properties.MetronAgent.PreferredProtocol != nil {
-		if *properties.MetronAgent.PreferredProtocol == "tls" {
-			args.MetronPreferTLS = true
-			extractMetronKeyAndCert(properties, outputDir)
-		}
-	}
 }
 
 func fillSyslog(args *models.InstallerArguments, manifest models.Manifest) {
@@ -280,19 +260,6 @@ func extractBbsKeyAndCert(properties *models.Properties, outputDir string) {
 		properties.Diego.Rep.BBS.ClientCert: "bbs_client.crt",
 		properties.Diego.Rep.BBS.ClientKey:  "bbs_client.key",
 		properties.Diego.Rep.BBS.CACert:     "bbs_ca.crt",
-	} {
-		err := ioutil.WriteFile(path.Join(outputDir, filename), []byte(key), 0644)
-		if err != nil {
-			FailOnError(err)
-		}
-	}
-}
-
-func extractMetronKeyAndCert(properties *models.Properties, outputDir string) {
-	for key, filename := range map[string]string{
-		properties.MetronAgent.TlsClient.Cert: "metron_agent.crt",
-		properties.MetronAgent.TlsClient.Key:  "metron_agent.key",
-		properties.Loggregator.Tls.CA:         "metron_ca.crt",
 	} {
 		err := ioutil.WriteFile(path.Join(outputDir, filename), []byte(key), 0644)
 		if err != nil {
