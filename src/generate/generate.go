@@ -18,7 +18,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/cloudfoundry-incubator/candiedyaml"
@@ -26,35 +25,6 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	"models"
-)
-
-const (
-	installBatTemplate = `msiexec /passive /norestart /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
-  BBS_CA_FILE=%~dp0\bbs_ca.crt ^
-  BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
-  BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
-  CONSUL_IPS={{.ConsulIPs}} ^
-  CF_ETCD_CLUSTER=http://{{.EtcdCluster}}:4001 ^
-  STACK=windows2012R2 ^
-  REDUNDANCY_ZONE={{.Zone}} ^
-  LOGGREGATOR_SHARED_SECRET={{.SharedSecret}} ^
-  MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
-  SYSLOG_HOST_IP={{.SyslogHostIP}} ^
-  SYSLOG_PORT={{.SyslogPort}}{{ end }}{{if .ConsulRequireSSL }} ^
-  CONSUL_ENCRYPT_FILE=%~dp0\consul_encrypt.key ^
-  CONSUL_CA_FILE=%~dp0\consul_ca.crt ^
-  CONSUL_AGENT_CERT_FILE=%~dp0\consul_agent.crt ^
-  CONSUL_AGENT_KEY_FILE=%~dp0\consul_agent.key{{end}}{{if .MetronPreferTLS }} ^
-  METRON_CA_FILE=%~dp0\metron_ca.crt ^
-  METRON_AGENT_CERT_FILE=%~dp0\metron_agent.crt ^
-  METRON_AGENT_KEY_FILE=%~dp0\metron_agent.key{{end}}
-
-msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
-  ADMIN_USERNAME={{.Username}} ^
-  ADMIN_PASSWORD={{.Password}} ^
-  MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
-  SYSLOG_HOST_IP={{.SyslogHostIP}} ^
-  SYSLOG_PORT={{.SyslogPort}}{{ end }}`
 )
 
 func main() {
@@ -308,17 +278,17 @@ func FailOnError(err error) {
 }
 
 func generateInstallScript(outputDir string, args models.InstallerArguments) {
-	content := strings.Replace(installBatTemplate, "\n", "\r\n", -1)
-	temp := template.Must(template.New("").Parse(content))
 	args.Zone = "windows"
-	filename := "install.bat"
-	file, err := os.OpenFile(path.Join(outputDir, filename), os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0644)
+
+	configFilename := "config.json"
+	bytes, err := json.Marshal(args)
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
 
-	err = temp.Execute(file, args)
+	err = ioutil.WriteFile(path.Join(outputDir, configFilename), bytes, 0644)
+
 	if err != nil {
 		log.Fatal(err)
 	}

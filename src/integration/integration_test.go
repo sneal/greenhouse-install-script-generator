@@ -1,13 +1,12 @@
 package integration_test
 
 import (
-	"bytes"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
-	"text/template"
+	"encoding/json"
 
 	"models"
 
@@ -171,47 +170,13 @@ func AmbiguousIndexDeployment() []models.IndexDeployment {
 	}
 }
 
-func ExpectedContent(args models.InstallerArguments) string {
-	content := `msiexec /passive /norestart /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
-  BBS_CA_FILE=%~dp0\bbs_ca.crt ^
-  BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
-  BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
-  CONSUL_IPS=127.0.0.1 ^
-  CF_ETCD_CLUSTER=http://etcd1.foo.bar:4001 ^
-  STACK=windows2012R2 ^
-  REDUNDANCY_ZONE=windows ^
-  LOGGREGATOR_SHARED_SECRET=secret123 ^
-  MACHINE_IP={{if .MachineIp }}{{.MachineIp}}{{else}}127.0.0.1{{end}}{{ if .SyslogHostIP }} ^
-  SYSLOG_HOST_IP=logs2.test.com ^
-  SYSLOG_PORT=11111{{ end }}{{ if .ConsulRequireSSL }} ^
-  CONSUL_ENCRYPT_FILE=%~dp0\consul_encrypt.key ^
-  CONSUL_CA_FILE=%~dp0\consul_ca.crt ^
-  CONSUL_AGENT_CERT_FILE=%~dp0\consul_agent.crt ^
-  CONSUL_AGENT_KEY_FILE=%~dp0\consul_agent.key{{end}}
-
-msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
-  ADMIN_USERNAME={{.Username}} ^
-  ADMIN_PASSWORD={{.Password}} ^
-  MACHINE_IP={{if .MachineIp }}{{.MachineIp}}{{else}}127.0.0.1{{end}}{{ if .SyslogHostIP }} ^
-  SYSLOG_HOST_IP=logs2.test.com ^
-  SYSLOG_PORT=11111{{ end }}`
-	content = strings.Replace(content, "\n", "\r\n", -1)
-	temp := template.Must(template.New("").Parse(content))
-	buf := bytes.NewBufferString("")
-	err := temp.Execute(buf, args)
-	if err != nil {
-		panic(err)
-	}
-	return buf.String()
-}
-
 var _ = Describe("Generate", func() {
 	var outputDir string
-	var script string
 	var server *ghttp.Server
 	var manifestYaml string
 	var deployments []models.IndexDeployment
 	var session *gexec.Session
+	var config models.InstallerArguments
 
 	BeforeEach(func() {
 		manifestYaml = "syslog_manifest.yml"
@@ -232,55 +197,52 @@ var _ = Describe("Generate", func() {
 			JustBeforeEach(func() {
 				session, outputDir = StartGeneratorWithURL(server.URL())
 				Eventually(session).Should(gexec.Exit(0))
-				content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
+				filePath := path.Join(outputDir, "config.json")
+			    jsonByte, err := ioutil.ReadFile(filePath)
 				Expect(err).NotTo(HaveOccurred())
-				script = strings.TrimSpace(string(content))
+				err = json.Unmarshal(jsonByte, &config)
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			Context("when the deployment has syslog", func() {
-				expectedContent := ExpectedContent(models.InstallerArguments{
+				expectedContent := models.InstallerArguments{
 					ConsulRequireSSL: true,
 					SyslogHostIP:     "logs2.test.com",
 					BbsRequireSsl:    true,
 					Username:         "admin",
 					Password:         `"""password"""`,
-				})
+				}
 
 				Context("when values are explicitly set", func() {
 					BeforeEach(func() {
 						manifestYaml = "syslog_manifest.yml"
 					})
 
-					It("contains all the MSI parameters", func() {
-						Expect(script).To(Equal(expectedContent))
+ 					It("writes syslog host ip to a config.json", func() {
+						Expect(config.SyslogHostIP).To(Equal(expectedContent.SyslogHostIP))
 					})
 				})
 
 				Context("when values are implicitly set by defaults", func() {
 					BeforeEach(func() {
+						// BM: FIXME figure out why this test is the same as the other one
 						manifestYaml = "syslog_manifest_default_values.yml"
 					})
 
 					It("contains all the MSI parameters", func() {
-						Expect(script).To(Equal(expectedContent))
+						Expect(config.SyslogHostIP).To(Equal(expectedContent.SyslogHostIP))
 					})
 				})
 			})
 
-			Context("when the deployment has a string port in the syslog", func() {
+			FContext("when the deployment has a string port in the syslog", func() {
 				BeforeEach(func() {
 					manifestYaml = "syslog_with_string_port_manifest.yml"
 				})
 
-				It("contains all the MSI parameters", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
-						ConsulRequireSSL: true,
-						SyslogHostIP:     "logs2.test.com",
-						BbsRequireSsl:    true,
-						Username:         "admin",
-						Password:         `"""password"""`,
-					})
-					Expect(script).To(Equal(expectedContent))
+				It("successfully parses it", func() {
+					Expect(config.SyslogPort).To(Equal("
+						11111"))
 				})
 			})
 
@@ -290,13 +252,13 @@ var _ = Describe("Generate", func() {
 				})
 
 				It("contains all the MSI parameters", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						ConsulRequireSSL: true,
 						BbsRequireSsl:    true,
 						Username:         "admin",
 						Password:         `"""password"""`,
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
@@ -353,23 +315,23 @@ var _ = Describe("Generate", func() {
 					})
 				})
 
-				Describe("the lines of the batch script", func() {
-					var script string
+				Describe("the lines of the batch config", func() {
+					var config string
 
 					JustBeforeEach(func() {
 						content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
 						Expect(err).NotTo(HaveOccurred())
-						script = strings.TrimSpace(string(content))
+						config = strings.TrimSpace(string(content))
 					})
 
 					It("contains all the MSI parameters", func() {
-						expectedContent := ExpectedContent(models.InstallerArguments{
+						expectedContent := models.InstallerArguments{
 							ConsulRequireSSL: true,
 							BbsRequireSsl:    true,
 							Username:         "admin",
 							Password:         `"""password"""`,
-						})
-						Expect(script).To(Equal(expectedContent))
+						}
+						Expect(config).To(Equal(expectedContent))
 					})
 				})
 			})
@@ -380,13 +342,13 @@ var _ = Describe("Generate", func() {
 				})
 
 				It("does not contain bbs parameters", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						ConsulRequireSSL: true,
 						BbsRequireSsl:    false,
 						Username:         "admin",
 						Password:         `"""password"""`,
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
@@ -396,13 +358,13 @@ var _ = Describe("Generate", func() {
 				})
 
 				It("does not contain bbs parameters", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						ConsulRequireSSL: false,
 						BbsRequireSsl:    false,
 						Username:         "admin",
 						Password:         `"""password"""`,
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
@@ -412,13 +374,13 @@ var _ = Describe("Generate", func() {
 				})
 
 				It("does not contain consul parameters", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						Username:         "admin",
 						Password:         `"""password"""`,
 						ConsulRequireSSL: false,
 						BbsRequireSsl:    true,
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
@@ -428,14 +390,14 @@ var _ = Describe("Generate", func() {
 				})
 
 				It("gets the properties from the job", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						ConsulRequireSSL: true,
 						SyslogHostIP:     "logs2.test.com",
 						BbsRequireSsl:    true,
 						Username:         "admin",
 						Password:         `"""password"""`,
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
@@ -496,21 +458,21 @@ var _ = Describe("Generate", func() {
 					"-machineIp", "10.10.3.21",
 				)
 				Eventually(session).Should(gexec.Exit(0))
-				content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
-				Expect(err).NotTo(HaveOccurred())
-				script = strings.TrimSpace(string(content))
+				// content, err := ioutil.ReadFile(path.Join(outputDir, "config.json"))
+				// Expect(err).NotTo(HaveOccurred())
+				// config = strings.TrimSpace(string(content))
 			})
 
 			It("gets the properties from the job", func() {
-				expectedContent := ExpectedContent(models.InstallerArguments{
+				expectedContent := models.InstallerArguments{
 					ConsulRequireSSL: true,
 					SyslogHostIP:     "logs2.test.com",
 					BbsRequireSsl:    true,
 					Username:         "admin",
 					Password:         `"""password"""`,
 					MachineIp:        "10.10.3.21",
-				})
-				Expect(script).To(Equal(expectedContent))
+				}
+				Expect(config).To(Equal(expectedContent))
 			})
 		})
 	})
@@ -557,20 +519,20 @@ var _ = Describe("Generate", func() {
 
 				JustBeforeEach(func() {
 					Eventually(session).Should(gexec.Exit(0))
-					content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
-					Expect(err).NotTo(HaveOccurred())
-					script = strings.TrimSpace(string(content))
+					// content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
+					// Expect(err).NotTo(HaveOccurred())
+					// config = strings.TrimSpace(string(content))
 				})
 
 				It("escapes the password properly", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
+					expectedContent := models.InstallerArguments{
 						ConsulRequireSSL: true,
 						SyslogHostIP:     "logs2.test.com",
 						BbsRequireSsl:    true,
 						Username:         "username",
 						Password:         "\"\"\"password`~!@#$^&*()_-+={}[]\\|:;<>,.?/123'%%\"\"\"",
-					})
-					Expect(script).To(Equal(expectedContent))
+					}
+					Expect(config).To(Equal(expectedContent))
 				})
 			})
 
