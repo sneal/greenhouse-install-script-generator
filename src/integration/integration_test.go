@@ -205,6 +205,10 @@ msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
 	return buf.String()
 }
 
+var _ = AfterSuite(func() {
+	gexec.CleanupBuildArtifacts()
+})
+
 var _ = Describe("Generate", func() {
 	var outputDir string
 	var script string
