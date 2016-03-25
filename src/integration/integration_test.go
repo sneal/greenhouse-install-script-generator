@@ -176,6 +176,7 @@ func ExpectedContent(args models.InstallerArguments) string {
   BBS_CA_FILE=%~dp0\bbs_ca.crt ^
   BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
   BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
+  CONSUL_DOMAIN={{.ConsulDomain}} ^
   CONSUL_IPS=127.0.0.1 ^
   CF_ETCD_CLUSTER=http://etcd1.foo.bar:4001 ^
   STACK=windows2012R2 ^
@@ -248,6 +249,7 @@ var _ = Describe("Generate", func() {
 					BbsRequireSsl:    true,
 					Username:         "admin",
 					Password:         `"""password"""`,
+					ConsulDomain:     "cf.internal",
 				})
 
 				Context("when values are explicitly set", func() {
@@ -283,6 +285,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    true,
 						Username:         "admin",
 						Password:         `"""password"""`,
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -299,6 +302,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    true,
 						Username:         "admin",
 						Password:         `"""password"""`,
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -372,6 +376,7 @@ var _ = Describe("Generate", func() {
 							BbsRequireSsl:    true,
 							Username:         "admin",
 							Password:         `"""password"""`,
+							ConsulDomain:     "cf.internal",
 						})
 						Expect(script).To(Equal(expectedContent))
 					})
@@ -389,6 +394,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    false,
 						Username:         "admin",
 						Password:         `"""password"""`,
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -405,6 +411,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    false,
 						Username:         "admin",
 						Password:         `"""password"""`,
+						ConsulDomain:     "custom.cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -421,6 +428,7 @@ var _ = Describe("Generate", func() {
 						Password:         `"""password"""`,
 						ConsulRequireSSL: false,
 						BbsRequireSsl:    true,
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -438,6 +446,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    true,
 						Username:         "admin",
 						Password:         `"""password"""`,
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})
@@ -485,6 +494,36 @@ var _ = Describe("Generate", func() {
 					Expect(cert).To(BeEquivalentTo("METRON_AGENT_KEY"))
 				})
 			})
+
+			Context("When the consul domain is specified", func() {
+				BeforeEach(func() {
+					manifestYaml = "no_consul_or_bbs_cert_manifest.yml"
+				})
+
+				It("extracts the consul domain from the manifest", func() {
+					expectedContent := ExpectedContent(models.InstallerArguments{
+						Username:     "admin",
+						Password:     `"""password"""`,
+						ConsulDomain: "custom.cf.internal",
+					})
+					Expect(script).To(Equal(expectedContent))
+				})
+			})
+
+			Context("When the consul domain is not specified", func() {
+				BeforeEach(func() {
+					manifestYaml = "no_consul_domain_manifest.yml"
+				})
+
+				It("uses a default consul domain", func() {
+					expectedContent := ExpectedContent(models.InstallerArguments{
+						Username:     "admin",
+						Password:     `"""password"""`,
+						ConsulDomain: "cf.internal",
+					})
+					Expect(script).To(Equal(expectedContent))
+				})
+			})
 		})
 
 		Context("with an optional machine IP", func() {
@@ -513,6 +552,7 @@ var _ = Describe("Generate", func() {
 					Username:         "admin",
 					Password:         `"""password"""`,
 					MachineIp:        "10.10.3.21",
+					ConsulDomain:     "cf.internal",
 				})
 				Expect(script).To(Equal(expectedContent))
 			})
@@ -573,6 +613,7 @@ var _ = Describe("Generate", func() {
 						BbsRequireSsl:    true,
 						Username:         "username",
 						Password:         "\"\"\"password`~!@#$^&*()_-+={}[]\\|:;<>,.?/123'%%\"\"\"",
+						ConsulDomain:     "cf.internal",
 					})
 					Expect(script).To(Equal(expectedContent))
 				})

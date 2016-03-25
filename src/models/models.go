@@ -27,6 +27,7 @@ type InstallerArguments struct {
 	BbsRequireSsl    bool
 	MachineIp        string
 	MetronPreferTLS  bool
+	ConsulDomain     string
 }
 
 type ConsulProperties struct {
@@ -36,6 +37,7 @@ type ConsulProperties struct {
 	AgentKey    string   `yaml:"agent_key"`
 	EncryptKeys []string `yaml:"encrypt_keys"`
 	Agent       struct {
+		Domain  string
 		Servers struct {
 			Lan []string `yaml:"lan"`
 		} `yaml:"servers"`

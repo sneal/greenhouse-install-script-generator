@@ -33,6 +33,7 @@ const (
   BBS_CA_FILE=%~dp0\bbs_ca.crt ^
   BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
   BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
+  CONSUL_DOMAIN={{.ConsulDomain}} ^
   CONSUL_IPS={{.ConsulIPs}} ^
   CF_ETCD_CLUSTER=http://{{.EtcdCluster}}:4001 ^
   STACK=windows2012R2 ^
@@ -234,6 +235,12 @@ func fillConsul(args *models.InstallerArguments, manifest models.Manifest, outpu
 	if requireSSL == nil || *requireSSL {
 		args.ConsulRequireSSL = true
 		extractConsulKeyAndCert(properties, outputDir)
+	}
+
+	if properties.Consul.Agent.Domain != "" {
+		args.ConsulDomain = properties.Consul.Agent.Domain
+	} else {
+		args.ConsulDomain = "cf.internal"
 	}
 }
 

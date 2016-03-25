@@ -2,7 +2,6 @@ properties:
   consul:
     require_ssl: false
     agent:
-      domain: custom.cf.internal
       servers:
         lan:
           - 127.0.0.1
