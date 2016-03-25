@@ -220,13 +220,6 @@ func fillConsul(args *models.InstallerArguments, manifest models.Manifest, outpu
 		properties = manifest.Properties
 	}
 
-	// missing requireSSL implies true
-	requireSSL := properties.Consul.RequireSSL
-	if requireSSL == nil || *requireSSL {
-		args.ConsulRequireSSL = true
-		extractConsulKeyAndCert(properties, outputDir)
-	}
-
 	consuls := properties.Consul.Agent.Servers.Lan
 
 	if len(consuls) == 0 {
@@ -235,6 +228,13 @@ func fillConsul(args *models.InstallerArguments, manifest models.Manifest, outpu
 	}
 
 	args.ConsulIPs = strings.Join(consuls, ",")
+
+	// missing requireSSL implies true
+	requireSSL := properties.Consul.RequireSSL
+	if requireSSL == nil || *requireSSL {
+		args.ConsulRequireSSL = true
+		extractConsulKeyAndCert(properties, outputDir)
+	}
 }
 
 func fillEtcdCluster(args *models.InstallerArguments, manifest models.Manifest) {

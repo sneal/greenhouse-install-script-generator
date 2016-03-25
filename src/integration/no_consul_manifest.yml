@@ -1,11 +1,5 @@
 properties:
-  consul:
-    ca_cert: CONSUL_CA_CERT
-    require_ssl: true
-    agent_cert: CONSUL_AGENT_CERT
-    agent_key: CONSUL_AGENT_KEY
-    encrypt_keys:
-      - mBevws9TpU1sFPHK/Fq0IQ==
+  consul: {}
   loggregator:
     etcd:
       machines:
