@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -51,8 +50,6 @@ const (
   METRON_AGENT_KEY_FILE=%~dp0\metron_agent.key{{end}}
 
 msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
-  ADMIN_USERNAME={{.Username}} ^
-  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP={{.SyslogHostIP}} ^
   SYSLOG_PORT={{.SyslogPort}}{{ end }}`
@@ -61,8 +58,6 @@ msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
 func main() {
 	boshServerUrl := flag.String("boshUrl", "", "Bosh URL (https://admin:admin@bosh.example:25555)")
 	outputDir := flag.String("outputDir", "", "Output directory (/tmp/scripts)")
-	windowsUsername := flag.String("windowsUsername", "", "Windows username")
-	windowsPassword := flag.String("windowsPassword", "", "Windows password")
 	machineIp := flag.String("machineIp", "", "(optional) IP address of this cell")
 
 	flag.Parse()
@@ -78,9 +73,6 @@ func main() {
 			os.MkdirAll(*outputDir, 0755)
 		}
 	}
-
-	validateCredentials(*windowsUsername, *windowsPassword)
-	escapeWindowsPassword(windowsPassword)
 
 	response := NewBoshRequest(*boshServerUrl + "/deployments")
 	defer response.Body.Close()
@@ -119,10 +111,7 @@ func main() {
 		FailOnError(err)
 	}
 
-	args := models.InstallerArguments{
-		Username: *windowsUsername,
-		Password: *windowsPassword,
-	}
+	args := models.InstallerArguments{}
 
 	fillEtcdCluster(&args, manifest)
 	fillSharedSecret(&args, manifest)
@@ -369,23 +358,4 @@ func NewBoshRequest(endpoint string) *http.Response {
 		log.Fatalln("Unable to establish connection to BOSH Director.", err)
 	}
 	return response
-}
-
-func escapeWindowsPassword(password *string) {
-	newPassword := *password
-	newPassword = strings.Replace(newPassword, "%", "%%", -1)
-	newPassword = "\"\"\"" + newPassword + "\"\"\""
-	*password = newPassword
-}
-
-func validateCredentials(username, password string) {
-	pattern := regexp.MustCompile("^[a-zA-Z0-9]+$")
-
-	if !pattern.Match([]byte(username)) {
-		log.Fatalln("Invalid windowsUsername, must be alphanumeric")
-	}
-
-	if strings.Contains(password, `"`) {
-		log.Fatalln("Invalid windowsPassword, must not contain double-quotes")
-	}
 }

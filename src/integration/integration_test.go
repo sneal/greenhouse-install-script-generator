@@ -65,8 +65,6 @@ func StartGeneratorWithURL(serverUrl string) (*gexec.Session, string) {
 	return StartGeneratorWithArgs(
 		"-boshUrl", serverUrl,
 		"-outputDir", outputDir,
-		"-windowsUsername", "admin",
-		"-windowsPassword", "password",
 	), outputDir
 }
 
@@ -191,8 +189,6 @@ func ExpectedContent(args models.InstallerArguments) string {
   CONSUL_AGENT_KEY_FILE=%~dp0\consul_agent.key{{end}}
 
 msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
-  ADMIN_USERNAME={{.Username}} ^
-  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{if .MachineIp }}{{.MachineIp}}{{else}}127.0.0.1{{end}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP=logs2.test.com ^
   SYSLOG_PORT=11111{{ end }}`
@@ -534,8 +530,6 @@ var _ = Describe("Generate", func() {
 				session = StartGeneratorWithArgs(
 					"-boshUrl", server.URL(),
 					"-outputDir", outputDir,
-					"-windowsUsername", "admin",
-					"-windowsPassword", "password",
 					"-machineIp", "10.10.3.21",
 				)
 				Eventually(session).Should(gexec.Exit(0))
@@ -560,77 +554,6 @@ var _ = Describe("Generate", func() {
 	})
 
 	Describe("Failure scenarios", func() {
-		Context("non alphanumeric credentials", func() {
-			var username, password string
-
-			BeforeEach(func() {
-				username = "username"
-				password = "password"
-			})
-
-			JustBeforeEach(func() {
-				var err error
-				outputDir, err = ioutil.TempDir("", "XXXXXXX")
-				Expect(err).ToNot(HaveOccurred())
-				session = StartGeneratorWithArgs(
-					"-boshUrl", server.URL(),
-					"-outputDir", outputDir,
-					"-windowsUsername", username,
-					"-windowsPassword", password,
-				)
-			})
-
-			Context("non alphanumeric username", func() {
-				BeforeEach(func() {
-					username = "%%29529@@"
-				})
-
-				It("exits with exit code 1", func() {
-					Eventually(session).Should(gexec.Exit(1))
-				})
-
-				It("prints an error message", func() {
-					Eventually(session.Err).Should(gbytes.Say("Invalid windowsUsername"))
-				})
-			})
-
-			Context("non alphanumeric password", func() {
-				BeforeEach(func() {
-					password = "password`~!@#$^&*()_-+={}[]\\|:;<>,.?/123'%"
-				})
-
-				JustBeforeEach(func() {
-					Eventually(session).Should(gexec.Exit(0))
-					content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
-					Expect(err).NotTo(HaveOccurred())
-					script = strings.TrimSpace(string(content))
-				})
-
-				It("escapes the password properly", func() {
-					expectedContent := ExpectedContent(models.InstallerArguments{
-						ConsulRequireSSL: true,
-						SyslogHostIP:     "logs2.test.com",
-						BbsRequireSsl:    true,
-						Username:         "username",
-						Password:         "\"\"\"password`~!@#$^&*()_-+={}[]\\|:;<>,.?/123'%%\"\"\"",
-						ConsulDomain:     "cf.internal",
-					})
-					Expect(script).To(Equal(expectedContent))
-				})
-			})
-
-			Describe("double quotes in passwords", func() {
-				BeforeEach(func() {
-					password = `"password"`
-				})
-
-				It("does not allow them", func() {
-					Eventually(session).Should(gexec.Exit(1))
-					Eventually(session.Err).Should(gbytes.Say("Invalid windowsPassword"))
-				})
-			})
-		})
-
 		Context("when the server is not reachable", func() {
 			var session *gexec.Session
 
@@ -712,8 +635,6 @@ var _ = Describe("Generate", func() {
 			session = StartGeneratorWithArgs(
 				"-boshUrl", server.URL(),
 				"-outputDir", nonExistingDir,
-				"-windowsUsername", "admin",
-				"-windowsPassword", "password",
 			)
 		})
 
