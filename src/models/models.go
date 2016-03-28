@@ -31,7 +31,7 @@ type InstallerArguments struct {
 }
 
 type ConsulProperties struct {
-	RequireSSL  *bool    `yaml:"require_ssl"`
+	RequireSSL  *string  `yaml:"require_ssl"`
 	CACert      string   `yaml:"ca_cert"`
 	AgentCert   string   `yaml:"agent_cert"`
 	AgentKey    string   `yaml:"agent_key"`

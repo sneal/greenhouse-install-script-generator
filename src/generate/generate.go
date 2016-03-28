@@ -221,7 +221,7 @@ func fillConsul(args *models.InstallerArguments, manifest models.Manifest, outpu
 
 	// missing requireSSL implies true
 	requireSSL := properties.Consul.RequireSSL
-	if requireSSL == nil || *requireSSL {
+	if requireSSL == nil || *requireSSL != "false" {
 		args.ConsulRequireSSL = true
 		extractConsulKeyAndCert(properties, outputDir)
 	}
