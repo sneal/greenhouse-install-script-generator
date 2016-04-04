@@ -2,7 +2,10 @@ package integration_test
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -22,6 +25,12 @@ func DefaultServer() *ghttp.Server {
 	return CreateServer("one_zone_manifest.yml", DefaultIndexDeployment())
 }
 
+func serverUrl(server *ghttp.Server) string {
+	u, _ := url.Parse(server.URL())
+	u.User = url.UserPassword("admin", "admin")
+	return u.String()
+}
+
 func CreateServer(manifest string, deployments []models.IndexDeployment) *ghttp.Server {
 	yaml, err := ioutil.ReadFile(manifest)
 	Expect(err).ToNot(HaveOccurred())
@@ -32,6 +41,10 @@ func CreateServer(manifest string, deployments []models.IndexDeployment) *ghttp.
 
 	server := ghttp.NewServer()
 	server.AppendHandlers(
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/info"),
+			ghttp.RespondWith(200, `{"user_authentication":{"type":"basic"}}`),
+		),
 		ghttp.CombineHandlers(
 			ghttp.VerifyRequest("GET", "/deployments"),
 			ghttp.RespondWithJSONEncoded(200, deployments),
@@ -45,9 +58,56 @@ func CreateServer(manifest string, deployments []models.IndexDeployment) *ghttp.
 	return server
 }
 
+func CreateUaaProtectedServer(manifest string, deployments []models.IndexDeployment, uaaEndpoint string) *ghttp.Server {
+	yaml, err := ioutil.ReadFile(manifest)
+	Expect(err).ToNot(HaveOccurred())
+
+	diegoDeployment := models.ShowDeployment{
+		Manifest: string(yaml),
+	}
+	server := ghttp.NewServer()
+	server.AppendHandlers(
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/info"),
+			ghttp.RespondWith(200, fmt.Sprintf(`{"user_authentication":{"type":"uaa","options":{"url":"%s"}}}`, uaaEndpoint)),
+		),
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/deployments"),
+			ghttp.VerifyHeader(http.Header{"Authorization": []string{"bearer the token"}}),
+			ghttp.RespondWithJSONEncoded(200, deployments),
+		),
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/deployments/cf-warden-diego"),
+			ghttp.VerifyHeader(http.Header{"Authorization": []string{"bearer the token"}}),
+			ghttp.RespondWithJSONEncoded(200, diegoDeployment),
+		),
+	)
+	return server
+}
+
+func CreateOAuthServer() *ghttp.Server {
+	server := ghttp.NewServer()
+	server.AppendHandlers(
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("POST", "/oauth/token"),
+			ghttp.VerifyBasicAuth("client-name", "client-secret"),
+			ghttp.VerifyContentType("application/x-www-form-urlencoded; charset=UTF-8"),
+			ghttp.VerifyHeader(http.Header{
+				"Accept": []string{"application/json; charset=utf-8"},
+			}),
+			ghttp.RespondWith(200, `{"access_token":"the token","expires_in":3600}`),
+		),
+	)
+	return server
+}
+
 func Create401Server() *ghttp.Server {
 	server := ghttp.NewServer()
 	server.AppendHandlers(
+		ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/info"),
+			ghttp.RespondWithJSONEncoded(200, `{"user_authentication":{"type":"basic"}}`),
+		),
 		ghttp.CombineHandlers(
 			ghttp.VerifyRequest("GET", "/deployments"),
 			ghttp.RespondWith(401, "Not authorized"),
@@ -228,10 +288,32 @@ var _ = Describe("Generate", func() {
 		server = CreateServer(manifestYaml, deployments)
 	})
 
+	Describe("UAA integration", func() {
+		var oauthServer *ghttp.Server
+		var uaaServer *ghttp.Server
+		BeforeEach(func() {
+			oauthServer = CreateOAuthServer()
+			uaaServer = CreateUaaProtectedServer(manifestYaml, deployments, oauthServer.URL())
+		})
+		AfterEach(func() {
+			uaaServer.Close()
+			oauthServer.Close()
+		})
+
+		It("should work", func() {
+			u, _ := url.Parse(uaaServer.URL())
+			u.User = url.UserPassword("client-name", "client-secret")
+			session, outputDir = StartGeneratorWithURL(u.String())
+			Eventually(session).Should(gexec.Exit(0))
+			Expect(oauthServer.ReceivedRequests()).Should(HaveLen(1))
+			Expect(uaaServer.ReceivedRequests()).Should(HaveLen(3))
+		})
+	})
+
 	Describe("Success scenarios", func() {
 		Context("with default arguments", func() {
 			JustBeforeEach(func() {
-				session, outputDir = StartGeneratorWithURL(server.URL())
+				session, outputDir = StartGeneratorWithURL(serverUrl(server))
 				Eventually(session).Should(gexec.Exit(0))
 				content, err := ioutil.ReadFile(path.Join(outputDir, "install.bat"))
 				Expect(err).NotTo(HaveOccurred())
@@ -309,12 +391,12 @@ var _ = Describe("Generate", func() {
 					manifestYaml = "one_zone_manifest.yml"
 					server = CreateServer(manifestYaml, DefaultIndexDeployment())
 					var session *gexec.Session
-					session, outputDir = StartGeneratorWithURL(server.URL())
+					session, outputDir = StartGeneratorWithURL(serverUrl(server))
 					Eventually(session).Should(gexec.Exit(-1))
 				})
 
 				It("sends get requests to get the deployments", func() {
-					Expect(server.ReceivedRequests()).To(HaveLen(2))
+					Expect(server.ReceivedRequests()).To(HaveLen(3))
 				})
 
 				Context("consul files", func() {
@@ -528,7 +610,7 @@ var _ = Describe("Generate", func() {
 				outputDir, err := ioutil.TempDir("", "XXXXXXX")
 				Expect(err).ToNot(HaveOccurred())
 				session = StartGeneratorWithArgs(
-					"-boshUrl", server.URL(),
+					"-boshUrl", serverUrl(server),
 					"-outputDir", outputDir,
 					"-machineIp", "10.10.3.21",
 				)
@@ -558,7 +640,7 @@ var _ = Describe("Generate", func() {
 			var session *gexec.Session
 
 			BeforeEach(func() {
-				session, outputDir = StartGeneratorWithURL("http://1.2.3.4:5555")
+				session, outputDir = StartGeneratorWithURL("http://admin:admin@1.2.3.4:5555")
 				Eventually(session, "15s", "1s").Should(gexec.Exit(1))
 			})
 
@@ -572,7 +654,7 @@ var _ = Describe("Generate", func() {
 
 			BeforeEach(func() {
 				server := Create401Server()
-				session, outputDir = StartGeneratorWithURL(server.URL())
+				session, outputDir = StartGeneratorWithURL(serverUrl(server))
 				Eventually(session).Should(gexec.Exit(1))
 			})
 
@@ -587,7 +669,7 @@ var _ = Describe("Generate", func() {
 
 			BeforeEach(func() {
 				server = CreateServer("one_zone_manifest.yml", AmbiguousIndexDeployment())
-				session, outputDir = StartGeneratorWithURL(server.URL())
+				session, outputDir = StartGeneratorWithURL(serverUrl(server))
 				Eventually(session).Should(gexec.Exit(1))
 			})
 
@@ -614,7 +696,7 @@ var _ = Describe("Generate", func() {
 
 			BeforeEach(func() {
 				server = CreateServer("no_consul_manifest.yml", DefaultIndexDeployment())
-				session, outputDir = StartGeneratorWithURL(server.URL())
+				session, outputDir = StartGeneratorWithURL(serverUrl(server))
 				Eventually(session).Should(gexec.Exit(1))
 			})
 
@@ -633,7 +715,7 @@ var _ = Describe("Generate", func() {
 			Expect(err).NotTo(HaveOccurred())
 			server := DefaultServer()
 			session = StartGeneratorWithArgs(
-				"-boshUrl", server.URL(),
+				"-boshUrl", serverUrl(server),
 				"-outputDir", nonExistingDir,
 			)
 		})

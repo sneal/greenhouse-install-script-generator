@@ -22,6 +22,10 @@ import (
 	"time"
 
 	"github.com/cloudfoundry-incubator/candiedyaml"
+	uaaclient "github.com/cloudfoundry-incubator/uaa-go-client"
+	uaaclientconfig "github.com/cloudfoundry-incubator/uaa-go-client/config"
+	"github.com/pivotal-golang/clock"
+	"github.com/pivotal-golang/lager"
 
 	"golang.org/x/crypto/pbkdf2"
 
@@ -78,6 +82,7 @@ func main() {
 	}
 
 	bosh := NewBosh(*u)
+	bosh.Authorize()
 
 	response := bosh.MakeRequest("/deployments")
 	defer response.Body.Close()
@@ -359,8 +364,52 @@ type Bosh struct {
 	authType  string
 }
 
+type BoshInfo struct {
+	UserAuthentication struct {
+		Type    string `json:"type"`
+		Options struct {
+			Url string `json:"url"`
+		} `json:"options"`
+	} `json:"user_authentication"`
+}
+
 func (b *Bosh) Authorize() {
-	b.MakeRequest("/info")
+	if b.endpoint.User == nil {
+		log.Fatalln("Director username and password are required.")
+	}
+	password, _ := b.endpoint.User.Password()
+	if password == "" {
+		log.Fatalln("Director password is required.")
+	}
+	resp := b.MakeRequest("/info")
+	defer resp.Body.Close()
+	var info BoshInfo
+	body, _ := ioutil.ReadAll(resp.Body)
+	json.Unmarshal(body, &info)
+	b.authType = info.UserAuthentication.Type
+	if b.authType == "uaa" {
+		cfg := &uaaclientconfig.Config{
+			ClientName:       b.endpoint.User.Username(),
+			ClientSecret:     password,
+			UaaEndpoint:      info.UserAuthentication.Options.Url,
+			SkipVerification: true,
+		}
+
+		clock := clock.NewClock()
+		logger := lager.NewLogger("")
+
+		uaaClient, err := uaaclient.NewClient(logger, cfg, clock)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		token, err := uaaClient.FetchToken(true)
+		if err != nil {
+			log.Fatal(err)
+		}
+		b.authToken = token.AccessToken
+		b.endpoint.User = nil
+	}
 }
 
 func (b *Bosh) MakeRequest(path string) *http.Response {
@@ -368,23 +417,8 @@ func (b *Bosh) MakeRequest(path string) *http.Response {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
-		InsecureSkipVerify: true,
-	}
-
-	http.DefaultClient.Timeout = 10 * time.Second
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.Fatalln("Unable to establish connection to BOSH Director.", err)
-	}
-	return response
-}
-
-func NewBoshRequest(endpoint string) *http.Response {
-	request, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		log.Fatal(err)
+	if b.authType == "uaa" {
+		request.Header.Set("Authorization", fmt.Sprintf("bearer %s", b.authToken))
 	}
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
