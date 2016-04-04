@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -67,6 +68,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	u, _ := url.Parse(*boshServerUrl)
+
 	_, err := os.Stat(*outputDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -74,7 +77,9 @@ func main() {
 		}
 	}
 
-	response := NewBoshRequest(*boshServerUrl + "/deployments")
+	bosh := NewBosh(*u)
+
+	response := bosh.MakeRequest("/deployments")
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
@@ -97,7 +102,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	response = NewBoshRequest(*boshServerUrl + "/deployments/" + deployments[idx].Name)
+	response = bosh.MakeRequest("/deployments/" + deployments[idx].Name)
 	defer response.Body.Close()
 
 	deployment := models.ShowDeployment{}
@@ -340,6 +345,40 @@ func GetDiegoDeployment(deployments []models.IndexDeployment) int {
 	}
 
 	return deploymentIndex
+}
+
+func NewBosh(endpoint url.URL) *Bosh {
+	return &Bosh{
+		endpoint: endpoint,
+	}
+}
+
+type Bosh struct {
+	endpoint  url.URL
+	authToken string
+	authType  string
+}
+
+func (b *Bosh) Authorize() {
+	b.MakeRequest("/info")
+}
+
+func (b *Bosh) MakeRequest(path string) *http.Response {
+	request, err := http.NewRequest("GET", b.endpoint.String()+path, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	http.DefaultClient.Timeout = 10 * time.Second
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.Fatalln("Unable to establish connection to BOSH Director.", err)
+	}
+	return response
 }
 
 func NewBoshRequest(endpoint string) *http.Response {
