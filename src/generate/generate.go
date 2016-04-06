@@ -411,7 +411,7 @@ func (b *Bosh) Authorize() {
 
 		token, err := conf.PasswordCredentialsToken(nil, b.endpoint.User.Username(), password)
 		if err != nil {
-			log.Fatal(authURL, tokenURL, err)
+			log.Fatal(err)
 		}
 
 		b.authToken = token.AccessToken
