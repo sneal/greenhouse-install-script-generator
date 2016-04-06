@@ -90,12 +90,9 @@ func CreateOAuthServer() *ghttp.Server {
 	server.AppendHandlers(
 		ghttp.CombineHandlers(
 			ghttp.VerifyRequest("POST", "/oauth/token"),
-			ghttp.VerifyBasicAuth("client-name", "client-secret"),
-			ghttp.VerifyContentType("application/x-www-form-urlencoded; charset=UTF-8"),
-			ghttp.VerifyHeader(http.Header{
-				"Accept": []string{"application/json; charset=utf-8"},
-			}),
-			ghttp.RespondWith(200, `{"access_token":"the token","expires_in":3600}`),
+			ghttp.VerifyBasicAuth("bosh_cli", ""),
+			ghttp.RespondWith(200, `{"access_token":"the token","expires_in":3600}`,
+				http.Header{"Content-Type": []string{"application/json"}}),
 		),
 	)
 	return server
@@ -302,7 +299,7 @@ var _ = Describe("Generate", func() {
 
 		It("should work", func() {
 			u, _ := url.Parse(uaaServer.URL())
-			u.User = url.UserPassword("client-name", "client-secret")
+			u.User = url.UserPassword("director", "deadbeef")
 			session, outputDir = StartGeneratorWithURL(u.String())
 			Eventually(session).Should(gexec.Exit(0))
 			Expect(oauthServer.ReceivedRequests()).Should(HaveLen(1))

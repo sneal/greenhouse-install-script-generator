@@ -22,12 +22,9 @@ import (
 	"time"
 
 	"github.com/cloudfoundry-incubator/candiedyaml"
-	uaaclient "github.com/cloudfoundry-incubator/uaa-go-client"
-	uaaclientconfig "github.com/cloudfoundry-incubator/uaa-go-client/config"
-	"github.com/pivotal-golang/clock"
-	"github.com/pivotal-golang/lager"
 
 	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/oauth2"
 
 	"models"
 )
@@ -388,25 +385,35 @@ func (b *Bosh) Authorize() {
 	json.Unmarshal(body, &info)
 	b.authType = info.UserAuthentication.Type
 	if b.authType == "uaa" {
-		cfg := &uaaclientconfig.Config{
-			ClientName:       b.endpoint.User.Username(),
-			ClientSecret:     password,
-			UaaEndpoint:      info.UserAuthentication.Options.Url,
-			SkipVerification: true,
-		}
-
-		clock := clock.NewClock()
-		logger := lager.NewLogger("")
-
-		uaaClient, err := uaaclient.NewClient(logger, cfg, clock)
+		tokenEndpoint, err := url.Parse("oauth/token")
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		token, err := uaaClient.FetchToken(true)
+		authEndpoint, err := url.Parse("oauth/authorize")
 		if err != nil {
 			log.Fatal(err)
 		}
+		uaaUrl, err := url.Parse(info.UserAuthentication.Options.Url)
+		if err != nil {
+			log.Fatal(err)
+		}
+		authURL := uaaUrl.ResolveReference(authEndpoint).String()
+		tokenURL := uaaUrl.ResolveReference(tokenEndpoint).String()
+		conf := &oauth2.Config{
+			ClientID:     "bosh_cli",
+			ClientSecret: "",
+			Scopes:       []string{"bosh.read"},
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  authURL,
+				TokenURL: tokenURL,
+			},
+		}
+
+		token, err := conf.PasswordCredentialsToken(nil, b.endpoint.User.Username(), password)
+		if err != nil {
+			log.Fatal(authURL, tokenURL, err)
+		}
+
 		b.authToken = token.AccessToken
 		b.endpoint.User = nil
 	}
