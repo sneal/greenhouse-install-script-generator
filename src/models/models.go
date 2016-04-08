@@ -64,6 +64,7 @@ type LoggregatorProperties struct {
 	} `yaml:"etcd"`
 	Tls struct {
 		CA string `yaml:"ca"`
+		CACert string `yaml:"ca_cert"`
 	} `yaml:"tls"`
 }
 
@@ -73,6 +74,10 @@ type MetronEndpoint struct {
 
 type MetronAgent struct {
 	PreferredProtocol *string `yaml:"preferred_protocol"`
+	Tls struct {
+		ClientCert string `yaml:"client_cert"`
+		ClientKey  string `yaml:"client_key"`
+	} `yaml:"tls"`
 	TlsClient         struct {
 		Cert string `yaml:"cert"`
 		Key  string `yaml:"key"`

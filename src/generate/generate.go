@@ -292,11 +292,21 @@ func extractBbsKeyAndCert(properties *models.Properties, outputDir string) {
 }
 
 func extractMetronKeyAndCert(properties *models.Properties, outputDir string) {
-	for key, filename := range map[string]string{
-		properties.MetronAgent.TlsClient.Cert: "metron_agent.crt",
-		properties.MetronAgent.TlsClient.Key:  "metron_agent.key",
-		properties.Loggregator.Tls.CA:         "metron_ca.crt",
-	} {
+	var metron map[string]string
+	if properties.Loggregator.Tls.CACert != "" {
+		metron = map[string]string{
+			properties.MetronAgent.Tls.ClientCert: "metron_agent.crt",
+			properties.MetronAgent.Tls.ClientKey:  "metron_agent.key",
+			properties.Loggregator.Tls.CACert:     "metron_ca.crt",
+		}
+	} else {
+		metron = map[string]string{
+			properties.MetronAgent.TlsClient.Cert: "metron_agent.crt",
+			properties.MetronAgent.TlsClient.Key:  "metron_agent.key",
+			properties.Loggregator.Tls.CA:         "metron_ca.crt",
+		}
+	}
+	for key, filename := range metron {
 		err := ioutil.WriteFile(path.Join(outputDir, filename), []byte(key), 0644)
 		if err != nil {
 			FailOnError(err)
