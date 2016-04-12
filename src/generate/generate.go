@@ -115,6 +115,7 @@ func main() {
 	decoder := candiedyaml.NewDecoder(buf)
 	err = decoder.Decode(&manifest)
 	if err != nil {
+		err = fmt.Errorf("%s\n\n%s", buf, err.Error())
 		FailOnError(err)
 	}
 
