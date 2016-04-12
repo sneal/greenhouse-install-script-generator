@@ -316,7 +316,8 @@ func extractMetronKeyAndCert(properties *models.Properties, outputDir string) {
 
 func FailOnError(err error) {
 	if err != nil {
-		panic(err)
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 }
 
