@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -40,6 +41,8 @@ const (
   STACK=windows2012R2 ^
   REDUNDANCY_ZONE={{.Zone}} ^
   LOGGREGATOR_SHARED_SECRET={{.SharedSecret}} ^
+  ADMIN_USERNAME={{.Username}} ^
+  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP={{.SyslogHostIP}} ^
   SYSLOG_PORT={{.SyslogPort}}{{ end }}{{if .ConsulRequireSSL }} ^
@@ -61,6 +64,8 @@ func main() {
 	boshServerUrl := flag.String("boshUrl", "", "Bosh URL (https://admin:admin@bosh.example:25555)")
 	outputDir := flag.String("outputDir", "", "Output directory (/tmp/scripts)")
 	machineIp := flag.String("machineIp", "", "(optional) IP address of this cell")
+	windowsUsername := flag.String("windowsUsername", "", "Windows username")
+	windowsPassword := flag.String("windowsPassword", "", "Windows password")
 
 	flag.Parse()
 	if *boshServerUrl == "" || *outputDir == "" {
@@ -77,6 +82,9 @@ func main() {
 			os.MkdirAll(*outputDir, 0755)
 		}
 	}
+
+	validateCredentials(*windowsUsername, *windowsPassword)
+	escapeWindowsPassword(windowsPassword)
 
 	bosh := NewBosh(*u)
 	bosh.Authorize()
@@ -119,7 +127,10 @@ func main() {
 		FailOnError(err)
 	}
 
-	args := models.InstallerArguments{}
+	args := models.InstallerArguments{
+		Username: *windowsUsername,
+		Password: *windowsPassword,
+	}
 
 	fillEtcdCluster(&args, manifest)
 	fillSharedSecret(&args, manifest)
@@ -457,4 +468,22 @@ func (b *Bosh) MakeRequest(path string) *http.Response {
 		log.Fatalln("Unable to establish connection to BOSH Director.", err)
 	}
 	return response
+}
+
+func escapeWindowsPassword(password *string) {
+	newPassword := *password
+	newPassword = strings.Replace(newPassword, "%", "%%", -1)
+	newPassword = "\"\"\"" + newPassword + "\"\"\""
+	*password = newPassword
+}
+
+func validateCredentials(username, password string) {
+	pattern := regexp.MustCompile("^[a-zA-Z0-9]+$")
+	if !pattern.Match([]byte(username)) {
+		log.Fatalln("Invalid windowsUsername, must be alphanumeric")
+	}
+
+	if strings.Contains(password, `"`) {
+		log.Fatalln("Invalid windowsPassword, must not contain double-quotes")
+	}
 }
