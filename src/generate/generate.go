@@ -146,10 +146,17 @@ func fillMachineIp(args *models.InstallerArguments, manifest models.Manifest, ma
 func fillSharedSecret(args *models.InstallerArguments, manifest models.Manifest) {
 	repJob := firstRepJob(manifest)
 	properties := repJob.Properties
-	if properties.MetronEndpoint == nil {
+	if properties.LoggregatorEndpoint == nil && properties.MetronEndpoint == nil {
 		properties = manifest.Properties
 	}
-	args.SharedSecret = properties.MetronEndpoint.SharedSecret
+	// grab the shared secret from the loggregator endpoint
+	if properties.LoggregatorEndpoint != nil {
+		args.SharedSecret = properties.LoggregatorEndpoint.SharedSecret
+	}
+	// in newer versions this is in the metron endpoint
+	if properties.MetronEndpoint != nil {
+		args.SharedSecret = properties.MetronEndpoint.SharedSecret
+	}
 }
 
 func fillMetronAgent(args *models.InstallerArguments, manifest models.Manifest, outputDir string) {
@@ -182,7 +189,7 @@ func fillSyslog(args *models.InstallerArguments, manifest models.Manifest) {
 		return
 	}
 
-	args.SyslogHostIP = properties.Syslog.Address
+	args.SyslogHostIP = properties.Syslog.Address[0]
 	args.SyslogPort = properties.Syslog.Port
 }
 
