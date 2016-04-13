@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	installBatTemplate = `msiexec /passive /norestart /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
+	installBatTemplate = `msiexec /passive /norestart /log %~dp0\DiegoWindows.log /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
   BBS_CA_FILE=%~dp0\bbs_ca.crt ^
   BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
   BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
@@ -54,7 +54,9 @@ const (
   METRON_AGENT_CERT_FILE=%~dp0\metron_agent.crt ^
   METRON_AGENT_KEY_FILE=%~dp0\metron_agent.key{{end}}
 
-msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
+msiexec /passive /norestart /log %~dp0\GardenWindows.log /i %~dp0\GardenWindows.msi ^
+  ADMIN_USERNAME={{.Username}} ^
+  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP={{.SyslogHostIP}} ^
   SYSLOG_PORT={{.SyslogPort}}{{ end }}`
