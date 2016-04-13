@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -30,7 +31,7 @@ import (
 )
 
 const (
-	installBatTemplate = `msiexec /passive /norestart /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
+	installBatTemplate = `msiexec /passive /norestart /log %~dp0\DiegoWindows.log /i %~dp0\DiegoWindows.msi ^{{ if .BbsRequireSsl }}
   BBS_CA_FILE=%~dp0\bbs_ca.crt ^
   BBS_CLIENT_CERT_FILE=%~dp0\bbs_client.crt ^
   BBS_CLIENT_KEY_FILE=%~dp0\bbs_client.key ^{{ end }}
@@ -40,6 +41,8 @@ const (
   STACK=windows2012R2 ^
   REDUNDANCY_ZONE={{.Zone}} ^
   LOGGREGATOR_SHARED_SECRET={{.SharedSecret}} ^
+  ADMIN_USERNAME={{.Username}} ^
+  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP={{.SyslogHostIP}} ^
   SYSLOG_PORT={{.SyslogPort}}{{ end }}{{if .ConsulRequireSSL }} ^
@@ -51,7 +54,9 @@ const (
   METRON_AGENT_CERT_FILE=%~dp0\metron_agent.crt ^
   METRON_AGENT_KEY_FILE=%~dp0\metron_agent.key{{end}}
 
-msiexec /passive /norestart /i %~dp0\GardenWindows.msi ^
+msiexec /passive /norestart /log %~dp0\GardenWindows.log /i %~dp0\GardenWindows.msi ^
+  ADMIN_USERNAME={{.Username}} ^
+  ADMIN_PASSWORD={{.Password}} ^
   MACHINE_IP={{.MachineIp}}{{ if .SyslogHostIP }} ^
   SYSLOG_HOST_IP={{.SyslogHostIP}} ^
   SYSLOG_PORT={{.SyslogPort}}{{ end }}`
@@ -61,6 +66,8 @@ func main() {
 	boshServerUrl := flag.String("boshUrl", "", "Bosh URL (https://admin:admin@bosh.example:25555)")
 	outputDir := flag.String("outputDir", "", "Output directory (/tmp/scripts)")
 	machineIp := flag.String("machineIp", "", "(optional) IP address of this cell")
+	windowsUsername := flag.String("windowsUsername", "", "Windows username")
+	windowsPassword := flag.String("windowsPassword", "", "Windows password")
 
 	flag.Parse()
 	if *boshServerUrl == "" || *outputDir == "" {
@@ -77,6 +84,9 @@ func main() {
 			os.MkdirAll(*outputDir, 0755)
 		}
 	}
+
+	validateCredentials(*windowsUsername, *windowsPassword)
+	escapeWindowsPassword(windowsPassword)
 
 	bosh := NewBosh(*u)
 	bosh.Authorize()
@@ -115,10 +125,14 @@ func main() {
 	decoder := candiedyaml.NewDecoder(buf)
 	err = decoder.Decode(&manifest)
 	if err != nil {
+		err = fmt.Errorf("%s\n\n%s", buf, err.Error())
 		FailOnError(err)
 	}
 
-	args := models.InstallerArguments{}
+	args := models.InstallerArguments{
+		Username: *windowsUsername,
+		Password: *windowsPassword,
+	}
 
 	fillEtcdCluster(&args, manifest)
 	fillSharedSecret(&args, manifest)
@@ -145,10 +159,17 @@ func fillMachineIp(args *models.InstallerArguments, manifest models.Manifest, ma
 func fillSharedSecret(args *models.InstallerArguments, manifest models.Manifest) {
 	repJob := firstRepJob(manifest)
 	properties := repJob.Properties
-	if properties.MetronEndpoint == nil {
+	if properties.LoggregatorEndpoint == nil && properties.MetronEndpoint == nil {
 		properties = manifest.Properties
 	}
-	args.SharedSecret = properties.MetronEndpoint.SharedSecret
+	// grab the shared secret from the loggregator endpoint
+	if properties.LoggregatorEndpoint != nil {
+		args.SharedSecret = properties.LoggregatorEndpoint.SharedSecret
+	}
+	// in newer versions this is in the metron endpoint
+	if properties.MetronEndpoint != nil {
+		args.SharedSecret = properties.MetronEndpoint.SharedSecret
+	}
 }
 
 func fillMetronAgent(args *models.InstallerArguments, manifest models.Manifest, outputDir string) {
@@ -181,7 +202,7 @@ func fillSyslog(args *models.InstallerArguments, manifest models.Manifest) {
 		return
 	}
 
-	args.SyslogHostIP = properties.Syslog.Address
+	args.SyslogHostIP = properties.Syslog.Address[0]
 	args.SyslogPort = properties.Syslog.Port
 }
 
@@ -316,7 +337,8 @@ func extractMetronKeyAndCert(properties *models.Properties, outputDir string) {
 
 func FailOnError(err error) {
 	if err != nil {
-		panic(err)
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 }
 
@@ -448,4 +470,22 @@ func (b *Bosh) MakeRequest(path string) *http.Response {
 		log.Fatalln("Unable to establish connection to BOSH Director.", err)
 	}
 	return response
+}
+
+func escapeWindowsPassword(password *string) {
+	newPassword := *password
+	newPassword = strings.Replace(newPassword, "%", "%%", -1)
+	newPassword = "\"\"\"" + newPassword + "\"\"\""
+	*password = newPassword
+}
+
+func validateCredentials(username, password string) {
+	pattern := regexp.MustCompile("^[a-zA-Z0-9]+$")
+	if !pattern.Match([]byte(username)) {
+		log.Fatalln("Invalid windowsUsername, must be alphanumeric")
+	}
+
+	if strings.Contains(password, `"`) {
+		log.Fatalln("Invalid windowsPassword, must not contain double-quotes")
+	}
 }
